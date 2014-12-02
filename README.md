@@ -64,6 +64,13 @@ The documentation views can be closed with the escape key (like all brackets
 inline widgets).
 
 
+## Elixir configuration
+
+The plugin allows to configure the path to the elixir executables through the
+`brackets-elixir.elixirPath` preference. By default this is empty. This means
+the plugin will look for elixir in the users `PATH`.
+
+
 ## Supported commands
 
 The following commands are provided and can be bound to keys:
