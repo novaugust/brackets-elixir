@@ -1,3 +1,5 @@
+(function(CodeMirror) {
+
 CodeMirror.defineMode("elixir", function(config) {
     function wordObj(words) {
         var o = {};
@@ -55,22 +57,22 @@ CodeMirror.defineMode("elixir", function(config) {
         "nil"
     ]);
     var indentWords = wordObj([
-        "case",
-        "catch",
-        "def",
-        "defdelegate",
-        "defimpl",
-        "defmacro",
-        "defmacrop",
-        "defmodule",
-        "defoverridable",
-        "defp",
-        "defprotocol",
-        "defrecord",
-        // "do",
-        "for",
-        "then",
-        "->",
+        //"case",
+        //"catch",
+        //"def",
+        //"defdelegate",
+        //"defimpl",
+        //"defmacro",
+        //"defmacrop",
+        //"defmodule",
+        //"defoverridable",
+        //"defp",
+        //"defprotocol",
+        //"defrecord",
+        "do",
+        //"for",
+        //"then",
+        "->"
     ]);
         var defineWords = wordObj([
         "def",
@@ -151,8 +153,19 @@ CodeMirror.defineMode("elixir", function(config) {
         "<-",
         "//"
     ]);
+    var electricWords = [
+        "end",
+        "catch",
+        "rescue",
+        "after",
+        ".*?->",
+        ".*?\\}",
+        ".*?\\]",
+        ".*?\\)",
+    ];
     var dedentWords = wordObj(["end", "until"]);
     var matching = {"[": "]", "{": "}", "(": ")"};
+    var sigils = {"[": "]", "{": "}", "(": ")", "|": "|", "/": "/", "\"": "\"", "\'": "\'"};
     var curPunc;
 
     function chain(newtok, stream, state) {
@@ -169,15 +182,18 @@ CodeMirror.defineMode("elixir", function(config) {
         if (stream.eatSpace()) return null;
         var ch = stream.next(), m;
         if (ch == "'" || ch == '"') {
+            if (ch == '"' && stream.match('""')) 
+                return chain(readHereDoc('"""'), stream, state);
             return chain(readQuoted(ch, "string", ch == '"' || ch == '"'), stream, state);
-        } else if (ch == "%") {
+        } else if (ch == "~") {
             var style = "string", embed = true;
             if (stream.eat(/[SWC]/)) style = "string";
-            else if (stream.eat(/[r]/)) style = "string-2";
-                else if (stream.eat(/[swc]/)) { style = "string"; embed = false; }
+            else if (stream.eat(/[R]/)) style = "string-2";
+            else if (stream.eat(/[r]/)) { style = "string-2"; embed = false; }
+            else if (stream.eat(/[swc]/)) { style = "string"; embed = false; }
             var delim = stream.eat(/[^\w\s]/);
             if (!delim) return "operator";
-            if (matching.propertyIsEnumerable(delim)) delim = matching[delim];
+            if (sigils.propertyIsEnumerable(delim)) delim = sigils[delim];
             return chain(readQuoted(delim, style, embed, true), stream, state);
         } else if (ch == "#") {
             stream.skipToEnd();
@@ -273,8 +289,11 @@ CodeMirror.defineMode("elixir", function(config) {
     }
     function readHereDoc(phrase) {
         return function(stream, state) {
-            if (stream.match(phrase)) state.tokenize.pop();
-            else stream.skipToEnd();
+            stream.eatSpace();
+            if (stream.match(phrase))
+                state.tokenize.pop();
+            else
+                stream.skipToEnd();
             return "string";
         };
     }
@@ -289,10 +308,9 @@ CodeMirror.defineMode("elixir", function(config) {
         startState: function() {
             return {tokenize: [tokenBase],
                     indented: 0,
-                    context: {type: "top", indented: -config.indentUnit},
+                    context: {type: "top", indented: -config.indentUnit, inArrowBlock: false},
                     continuedLine: false,
-                    lastTok: null,
-                    inArrowBlock: false};
+                    lastTok: null};
         },
 
         token: function(stream, state) {
@@ -306,29 +324,26 @@ CodeMirror.defineMode("elixir", function(config) {
                 : builtinWords.propertyIsEnumerable(stream.current()) ? "builtin"
                 : operatorWords.propertyIsEnumerable(stream.current()) ? "operator"
                 : moduleWords.propertyIsEnumerable(stream.current()) ? "tag"
-                : /^[A-Z]/.test(word) ? "tag"
+                : /^[A-Z]/.test(word) ? "variable-2"
                 : defineWords.propertyIsEnumerable(state.lastTok) ? "def"
                 : "variable";
-                if (indentWords.propertyIsEnumerable(word)) kwtype = "indent";
+                if (indentWords.propertyIsEnumerable(word) && (word + stream.peek() !== "do:")) kwtype = "indent";
                 else if (dedentWords.propertyIsEnumerable(word)) kwtype = "dedent";
             }
             if (curPunc || (style && style != "comment")) state.lastTok = word || curPunc || style;
 
-            if (kwtype == "indent" || /[\(\[\{]/.test(curPunc))
-                state.context = {prev: state.context, type: curPunc || style, indented: state.indented};
-            else if ((kwtype == "dedent" || /[\)\]\}]/.test(curPunc)) && state.context.prev)
-                state.context = state.context.prev;
-
-            if (word === "->") {
-                if (state.inArrowBlock) {
-                    state.context = state.context.prev;
-                } else {
-                    state.inArrowBlock = true;
-                }
-            } else if (state.inArrowBlock && word === "end") {
-                state.inArrowBlock = false;
-                state.context = state.context.prev;
+            if ((kwtype == "indent" && word !== "->") || /[\(\[\{]/.test(curPunc)) {
+                state.context = {
+                    prev: state.context, 
+                    type: curPunc || style, 
+                    indented: state.context.inArrowBlock ? state.indented + config.indentUnit: state.indented, 
+                    inArrowBlock: false
+                };
             }
+            else if (kwtype == "indent" && word == "->" && !state.context.inArrowBlock) 
+                state.context = {prev: state.context, type: curPunc || style, indented: state.indented, inArrowBlock: true};
+            else if ((kwtype == "dedent" || /[\)\]\}]/.test(curPunc)) && state.context.prev)
+                state.context = state.context.inArrowBlock ? state.context.prev.prev : state.context.prev;
 
             if (stream.eol())
                 state.continuedLine = (curPunc == "\\" || style == "operator");
@@ -341,7 +356,7 @@ CodeMirror.defineMode("elixir", function(config) {
             var ct = state.context;
             var closing = ct.type == matching[firstChar] ||
                 ct.type == "keyword" && /^(?:end|until|else|elsif|when|rescue)\b/.test(textAfter);
-            var closingArrowBlock = state.inArrowBlock && /end$/.test(textAfter);
+            var closingArrowBlock = ct.inArrowBlock && /end$/.test(textAfter);
             var arrowEnding = state.lastTok !== "do" && /\->/.test(textAfter);
             return ct.indented +
                 (closing ? 0 : config.indentUnit) +
@@ -349,11 +364,13 @@ CodeMirror.defineMode("elixir", function(config) {
                 (state.continuedLine ? config.indentUnit : 0);
         },
 
-        // // // commented for now
-        //electricChars: "}de>", // enD, rescuE, ->
-        electricChars: "}>", // enD, rescuE, ->
+        electricInput: new RegExp("^\\s*(?:" + electricWords.join("|") + ")$"),
         lineComment: "#"
     };
 });
 
-CodeMirror.defineMIME("text/x-elixir", "elixir");
+
+CodeMirror.defineMIME("application/x-elixir", "elixir");
+CodeMirror.defineMIME("application/x-eex", {name: "htmlembedded", scriptingModeSpec: "elixir"});
+
+})(brackets.getModule("thirdparty/CodeMirror/lib/codemirror"));
