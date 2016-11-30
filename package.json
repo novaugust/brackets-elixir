@@ -3,9 +3,10 @@
     "title": "Brackets Elixir",
     "description": "Code highlighting for Elixir in Brackets.",
     "homepage": "https://github.com/novaugust/brackets-elixir",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "author": "Matt Enlow (http://github.com/novaugust)",
     "contributors": [
+        "jacobcpeters (https://github.com/jacobcpeters)",
         "BigBlueHat <byoung@bigbluehat.com> (http://bigbluehat.com/)",
         "halohalospecial (http://github.com/halohalospecial/)"
     ],
